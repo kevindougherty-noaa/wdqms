@@ -108,6 +108,21 @@ def grab_netcdf_data(file, var):
             
     return data
 
+
+def round_column(df, col):
+    """
+    Round column numbers to 4 decimal places.
+    Input:
+        df: dataframe with information
+        col: column name to round data
+    Output:
+        df: dataframe with changed values in provided column
+    """
+    df[col] = df[col].map('{:,.4f}'.format)
+
+    return df
+
+
 def read_gsi_diag(file):
     """
     Reads the data from the conventional diagnostic file during
@@ -122,8 +137,6 @@ def read_gsi_diag(file):
     obs_type = filename.split('_')[1]
     variable = filename.split('_')[2]
     ftype = filename.split('_')[-1]
-    
-    print(variable)
     
     variable_ids = {
         'ps': 110,
@@ -232,9 +245,9 @@ def get_datetimes(df):
             'YYYYMMDD' and 'HHMMSS'
     """
     # Convert 'Datetime' column from str to datetime
-    dates = pd.to_datetime(df_total['Datetime'], format='%Y%m%d%H')
+    dates = pd.to_datetime(df['Datetime'], format='%Y%m%d%H')
     # Converts 'Time' column to time delta in hours
-    hrs = pd.to_timedelta(df_total['Time'], unit='hours')
+    hrs = pd.to_timedelta(df['Time'], unit='hours')
     # Actual datetime of ob adding datetime and timedelta in hours
     new_dt = dates+hrs
 
@@ -244,31 +257,56 @@ def get_datetimes(df):
     return df
 
 
+def wdqms_type_requirements(df, wdqms_type):
+    """
+    Filter dataframe to only include specific observation types.
+    """
+    if wdqms_type == 'SYNOP':
+        # Only include obs in the following observation types
+        df = df.loc[(df['Observation_Type'].isin([181, 187, 281, 287]))]
+
+        # Only include -3 > val >= 3 to avoid overlapping in cycles
+        df = df.loc[df['Time'] != -3.]
+
+        # Remove bad background departures for each variable
+        bad_ps = df[(df['var_id'] == 110) & (df['Obs_Minus_Forecast_adjusted'].abs() > 200)].index
+        df.drop(bad_ps, inplace=True)
+
+        bad_idx = df[(df['var_id'] != 110) & (df['Obs_Minus_Forecast_adjusted'].abs() > 500)].index
+        df.drop(bad_idx, inplace=True)
+
+    # Only include obs from observation type 120/220
+    elif wdqms_type == 'TEMP':
+        df = df.loc[(df['Observation_Type'].isin([120, 220]))]
+
+    return df
+
+
 def genqsat(df):
     """
     Calculates new background departure values for specific humidity (q)
     by calculating saturation specific humidity from corresponding temperature
     and pressure values. 
-    
+
     bg_dep = (q_obs/qsat_obs)-(q_ges/qsat_ges)
-    
+
     q_obs : measured q obs
     qsat_obs : calculated saturation q
     q_ges : q_obs minus q background error from GSI diagnostic file
     qsat_ges : calculated saturation q using temperature obs minus
                temperature background error from GSI diagnostic file
-    
+
     Args:
         df : (df) pandas dataframe populated with data from GSI
              diagnostic files
     Returns:
         df: (df) the same dataframe read in with new background
-            departure values
+            departure values for humidity data
     """
     # Create two dataframes, one for q vales and one for t values
-    q_df = df_total.loc[(df_total['var_id'] == 58.)]
-    t_df = df_total.loc[(df_total['var_id'] == 39.)]
-    
+    q_df = df.loc[(df['var_id'] == 58.)]
+    t_df = df.loc[(df['var_id'] == 39.)]
+
     # Find where stations are the same
     stn_ids = np.intersect1d(t_df.Station_ID, q_df.Station_ID)
 
@@ -283,7 +321,7 @@ def genqsat(df):
                           (np.in1d(t_tmp['Pressure'], q_tmp['Pressure'])) &
                           (np.in1d(t_tmp['Latitude'], q_tmp['Latitude'])) &
                           (np.in1d(t_tmp['Longitude'], q_tmp['Longitude']))]
-        
+
         q_obs = q_tmp['Observation'].to_numpy() * 1.0e6
         q_ges = (q_tmp['Observation'].to_numpy() - 
                  q_tmp['Obs_Minus_Forecast_adjusted'].to_numpy()) * 1.0e6
@@ -294,14 +332,15 @@ def genqsat(df):
 
         qsat_obs = temp_2_saturation_specific_humidity(pressure, t_obs)
         qsat_ges = temp_2_saturation_specific_humidity(pressure, t_ges)
-        
+
         bg_dep = (q_obs/qsat_obs)-(q_ges/qsat_ges)
-        
+
         # Replace the current background departure with the new calculated one
         df.loc[(df['var_id'] == 58.) & (df['Station_ID'] == stn),
                'Obs_Minus_Forecast_adjusted'] = bg_dep
-        
+
     return df
+
 
 def create_sondes_df(df):
     """
@@ -310,7 +349,7 @@ def create_sondes_df(df):
     stn_ids = df['Station_ID'].unique()
 
     df_list = []
-    
+
     # Loop through stations and create individual dataframes
     # that grabs average stats from surface, troposphere, and
     # stratosphere
@@ -320,7 +359,8 @@ def create_sondes_df(df):
             'Mean_Bg_dep': [],
             'Std_Bg_dep': [],
             'Levels': [],
-            'LastRepLevel': []
+            'LastRepLevel': [],
+            'StatusFlag': []
         }
 
         surf_lat = None
@@ -363,8 +403,8 @@ def create_sondes_df(df):
                 status_flag = surf_tmp['StatusFlag'].min()
 
                 d['var_id'].append(var)
-                d['Mean_Bg_dep'].append(round(surf_omf, 4))
-                d['Std_Bg_dep'].append(round(surf_std, 4))
+                d['Mean_Bg_dep'].append(surf_omf)
+                d['Std_Bg_dep'].append(surf_std)
                 d['Levels'].append('Surf')
                 d['LastRepLevel'].append(-999.99)
                 d['StatusFlag'].append(status_flag)
@@ -385,8 +425,8 @@ def create_sondes_df(df):
                 status_flag = trop_tmp['StatusFlag'].min()
 
                 d['var_id'].append(var)
-                d['Mean_Bg_dep'].append(round(trop_avg_omf, 4))
-                d['Std_Bg_dep'].append(round(trop_std_omf, 4))
+                d['Mean_Bg_dep'].append(trop_avg_omf)
+                d['Std_Bg_dep'].append(trop_std_omf)
                 d['Levels'].append('Trop')
                 d['LastRepLevel'].append(last_ps_rep)
                 d['StatusFlag'].append(status_flag)
@@ -407,8 +447,8 @@ def create_sondes_df(df):
                 status_flag = stra_tmp['StatusFlag'].min()
 
                 d['var_id'].append(var)
-                d['Mean_Bg_dep'].append(round(stra_avg_omf, 4))
-                d['Std_Bg_dep'].append(round(stra_std_omf, 4))
+                d['Mean_Bg_dep'].append(stra_avg_omf)
+                d['Std_Bg_dep'].append(stra_std_omf)
                 d['Levels'].append('Stra')
                 d['LastRepLevel'].append(last_ps_rep)
                 d['StatusFlag'].append(status_flag)
@@ -430,15 +470,19 @@ def create_sondes_df(df):
     df = pd.concat(df_list)
     df['Centre_id'] = 'NCEP'
     df['CodeType'] = 999
-    
+
     # Ordered columns
     cols = ['Station_id', 'yyyymmdd', 'HHMMSS', 'latitude', 'Longitude',
             'StatusFlag', 'Centre_id', 'var_id', 'Mean_Bg_dep', 'Std_Bg_dep',
             'Levels', 'LastRepLevel', 'CodeType']
-    
+
     df = df[cols]
     df = df.reset_index(drop=True)
-    
+
+    # Round given columns to four decimal places
+    for col in ['latitude', 'Longitude', 'Mean_Bg_dep', 'Std_Bg_dep']:
+        df = round_column(df, col)
+
     return df
 
 
@@ -467,6 +511,10 @@ def create_conv_df(df):
     df = df[cols]
     df = df.reset_index(drop=True)
 
+    # Round given columns to four decimal places
+    for col in ['latitude', 'Longitude', 'Bg_dep']:
+        df = round_column(df, col)
+
     return df
 
 
@@ -474,20 +522,19 @@ def df_to_csv(df, wdqms_type, datetime, outdir):
     """
     Produce output .csv file from dataframe.
     """
-    
     # Write dataframe to .csv
     date = datetime[:-2]
     cycle = datetime[-2:] 
-    
+
     hr_range = {
         '00': ['21', '03'],
         '06': ['03', '09'],
         '12': ['09', '15'],
         '18': ['15', '21']
     }
-    
+
     filename = f'{outdir}/NCEP_{wdqms_type}_{date}_{cycle}.csv'
-    
+
     f = open(filename, 'a')
     f.write("# TYPE=TEMP\n")
     f.write(f"#An_Date= {date}\n")
@@ -498,9 +545,10 @@ def df_to_csv(df, wdqms_type, datetime, outdir):
             "6(Alternative Used);7(Quality Issue);8(Other Reason);9(No content)\n")
     df.to_csv(f, index=False)
     f.close()
-    
+
     return filename
-    
+
+
 def wdqms(inputfiles, wdqms_type, outdir):
     """
     Main driver function to produce WDQMS output .csv files.
@@ -513,6 +561,9 @@ def wdqms(inputfiles, wdqms_type, outdir):
         df_list.append(df)
 
     df_total = pd.concat(df_list)
+    
+    # get appropriate data based on df_wdqms type
+    df_total = wdqms_type_requirements(df_total, wdqms_type)
 
     # Grab actual datetimes from datetime + timedelta
     df_total = get_datetimes(df_total)
@@ -527,12 +578,9 @@ def wdqms(inputfiles, wdqms_type, outdir):
     df_total = df_total.sort_values('Station_ID')
 
     if wdqms_type == 'SYNOP':
-        output_df = create_conv_df(total_df)
+        output_df = create_conv_df(df_total)
     elif wdqms_type == 'TEMP':
-        output_df = create_sondes_df(total_df)
-    else:
-        print("Please enter valid WDQMS type. Exiting ...")
-        sys.exit()
+        output_df = create_sondes_df(df_total)
 
     # Get str datetime
     datetime = inputfile[0].split('/')[-1].split('.')[-2]
@@ -542,6 +590,8 @@ def wdqms(inputfiles, wdqms_type, outdir):
     print("Success! Output file saved to: {out_filename}")
     print("Exiting ...")
     sys.exit()
+    
+    return
 
 
 if __name__ == "__main__":
@@ -556,5 +606,9 @@ if __name__ == "__main__":
                     help="Out directory where files will be saved")
 
     myargs = ap.parse_args()
+
+    if myargs.type not in ['SYNOP', 'TEMP', 'MARINE']:
+        raise ValueError(f'{myargs.type} not a correct input. Inputs include: ' \
+                         'SYNOP, TEMP, MARINE')
 
     wdqms(myargs.input_list, myargs.type, myargs.outdir)
