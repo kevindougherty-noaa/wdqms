@@ -524,7 +524,7 @@ def create_sondes_df(df):
                 d['Mean_Bg_dep'].append(stra_avg_omf)
                 d['Std_Bg_dep'].append(stra_std_omf)
                 d['Levels'].append(level)
-                d['LastRepLevel'].append(last_ps_rep)
+                d['LastRepLevel'].append(last_rep_lvl)
                 d['StatusFlag'].append(status_flag)
                 
                 logging.debug("Mean_Bg_dep, Std_Bg_dep, Levels, LastRepLevel, StatusFlag")
@@ -678,7 +678,7 @@ def wdqms(inputfiles, wdqms_type, outdir):
         output_df = create_sondes_df(df_total)
 
     # Get str datetime
-    datetime = inputfile[0].split('/')[-1].split('.')[-2]
+    datetime = inputfiles[0].split('/')[-1].split('.')[-2]
 
     out_filename = df_to_csv(output_df, wdqms_type, datetime, outdir)
 
