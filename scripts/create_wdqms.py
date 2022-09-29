@@ -290,9 +290,12 @@ def wdqms_type_requirements(df, wdqms_type):
     logging.debug(f"WDQMS Type: {wdqms_type}")
     logging.debug(f"Total observations for {wdqms_type} before filter: {len(df)}")
     
-    if wdqms_type == 'SYNOP':        
-        # Only include obs in the following observation types
-        df = df.loc[(df['Observation_Type'].isin([181, 187, 281, 287]))]
+    if wdqms_type in ['SYNOP', 'MARINE']:
+        if wdqms_type == 'SYNOP':
+            # Only include obs in the following observation types
+            df = df.loc[(df['Observation_Type'].isin([181, 187, 281, 287]))]
+        else:
+            df = df.loc[(df['Observation_Type'].isin([180, 183]))]
 
         # Only include -3 > val >= 3 to avoid overlapping in cycles
         df = df.loc[df['Time'] != -3.]
@@ -339,7 +342,8 @@ def genqsat(df, wdqms_type):
     logging.info("Working in genqstat()")
     
     type_d = {
-        'SYNOP': {'t': 39,'q': 58},
+        'SYNOP': {'t': 39, 'q': 58},
+        'MARINE': {'t': 39, 'q': 58},
         'TEMP': {'t': 2,'q': 29}
     }
     
@@ -622,7 +626,7 @@ def df_to_csv(df, wdqms_type, datetime, outdir):
     filename = f'{outdir}/NCEP_{wdqms_type}_{date}_{cycle}.csv'
 
     f = open(filename, 'a')
-    f.write("# TYPE=TEMP\n")
+    f.write(f"# TYPE={wdqms_type}\n")
     f.write(f"#An_Date= {date}\n")
     f.write(f"#An_time= {cycle}\n")
     f.write(f"#An_range=[ {hr_range[cycle][0]} to {hr_range[cycle][-1]} )\n")
@@ -672,7 +676,7 @@ def wdqms(inputfiles, wdqms_type, outdir):
 
     logging.info(f'Creating dataframe for {wdqms_type} type ...')
     
-    if wdqms_type == 'SYNOP':
+    if wdqms_type in ['SYNOP', 'MARINE']:
         output_df = create_conv_df(df_total)
     elif wdqms_type == 'TEMP':
         output_df = create_sondes_df(df_total)
