@@ -475,7 +475,8 @@ class WDQMS:
             logging.debug(f"New q background departure: {bg_dep}")
 
             # Replace the current background departure with the new calculated one
-            df.loc[(df['var_id'] == type_d[wdqms_type]['q']) & (df['Station_ID'] == stn),
+            df.loc[(df['var_id'] == self.wdqms_type_dict[self.wdqms_type]['variable_ids']['q']) &
+                   (df['Station_ID'] == stn),
                    'Obs_Minus_Forecast_adjusted'] = bg_dep
 
         logging.info("Exiting genqstat()")
