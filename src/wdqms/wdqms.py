@@ -30,17 +30,17 @@ class WDQMS:
             'SYNOP': {
                 'df_type': self._create_conv_df,
                 'obs_types': [181, 187, 281, 287],
-                'variable_ids': {'t': 39, 'q': 58}
+                'variable_ids': {'ps': 110, 'q': 58, 't': 39, 'u': 41, 'v': 42}
             },
             'TEMP': {
                 'df_type': self._create_sondes_df,
                 'obs_types': [180, 183],
-                'variable_ids': {'t': 2, 'q': 29}
+                'variable_ids': {'ps': 110, 'q': 29, 't': 2, 'u': 3, 'v': 4}
             },
             'MARINE': {
                 'df_type': self._create_conv_df,
                 'obs_types': [120, 220],
-                'variable_ids': {'t': 39, 'q': 58}
+                'variable_ids': {'ps': 110, 'q': 58, 't': 39, 'u': 41, 'v': 42}
             }
         }
 
@@ -68,6 +68,7 @@ class WDQMS:
 
         # Add Status Flag column
         df_total = self._create_status_flag(df_total)
+        df_total['StatusFlag'] = df_total['StatusFlag'].astype(int)
 
         # Sort by Station ID
         df_total = df_total.sort_values('Station_ID')
@@ -103,13 +104,15 @@ class WDQMS:
         if self.wdqms_type in ['SYNOP', 'MARINE']:
             # Only include -3 > val >= 3 to avoid overlapping in cycles
             df = df.loc[df['Time'] != -3.]
-
+            
+            ##### Causing things to break so commenting out for now #####
             # Remove bad background departures for each variable
-            bad_ps = df[(df['var_id'] == 110) & (df['Obs_Minus_Forecast_adjusted'].abs() > 200)].index
-            df.drop(bad_ps, inplace=True)
+            #bad_ps = df[(df['var_id'] == 110) & (df['Obs_Minus_Forecast_adjusted'].abs() > 200)].index
+            #df.drop(bad_ps, inplace=True)
 
-            bad_idx = df[(df['var_id'] != 110) & (df['Obs_Minus_Forecast_adjusted'].abs() > 500)].index
-            df.drop(bad_idx, inplace=True)
+            #bad_idx = df[(df['var_id'] != 110) & (df['Obs_Minus_Forecast_adjusted'].abs() > 500)].index
+            #df.drop(bad_idx, inplace=True)
+            #############################################################
 
         logging.debug(f"Total observations for {self.wdqms_type} after filter: {len(df)}")
         logging.info("Exiting wdqms_type_requirements()")
@@ -402,7 +405,7 @@ class WDQMS:
         df = df.reset_index(drop=True)
 
         # Round given columns to four decimal places
-        for col in ['latitude', 'Longitude', 'Mean_Bg_dep', 'Std_Bg_dep']:
+        for col in ['latitude', 'Longitude', 'Mean_Bg_dep', 'Std_Bg_dep', 'LastRepLevel']:
             df = self._round_column(df, col)
 
         logging.info("Exiting create_sondes_df()")
@@ -574,14 +577,6 @@ class WDQMS:
         variable = filename.split('_')[2]
         logging.debug(f'Variable: {variable}')
 
-        variable_ids = {
-            'ps': 110,
-            'q': 29,
-            't': 2,
-            'u': 3,
-            'v': 4
-        }
-
         df_dict = {}
 
         column_list = ['Station_ID', 'Observation_Class', 'Observation_Type',
@@ -606,14 +601,14 @@ class WDQMS:
                                 'u_Observation': 'Observation',
                                 'u_Obs_Minus_Forecast_adjusted': 'Obs_Minus_Forecast_adjusted'},
                                axis=1)
-            u_df['var_id'] = variable_ids['u']
+            u_df['var_id'] = self.wdqms_type_dict[self.wdqms_type]['variable_ids']['u']
 
             v_df = pd.DataFrame(df_dict['v'])
             v_df = v_df.rename({'Observation_Class': 'var_id',
                                 'v_Observation': 'Observation',
                                 'v_Obs_Minus_Forecast_adjusted': 'Obs_Minus_Forecast_adjusted'},
                                axis=1)
-            v_df['var_id'] = variable_ids['v']
+            v_df['var_id'] = self.wdqms_type_dict[self.wdqms_type]['variable_ids']['v']
 
             df = pd.concat([u_df, v_df])
 
@@ -624,7 +619,7 @@ class WDQMS:
 
             df = pd.DataFrame(df_dict)
             df = df.rename({'Observation_Class': 'var_id'}, axis=1)
-            df['var_id'] = variable_ids[variable]
+            df['var_id'] = self.wdqms_type_dict[self.wdqms_type]['variable_ids'][variable]
 
         # Add datetime column to dataframe
         df['Datetime'] = datetime
