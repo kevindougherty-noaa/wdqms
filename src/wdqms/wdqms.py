@@ -68,7 +68,7 @@ class WDQMS:
 
         # Add Status Flag column
         df_total = self._create_status_flag(df_total)
-        df_total['StatusFlag'].astype(int)
+        df_total['StatusFlag'] = df_total['StatusFlag'].astype(int)
 
         # Sort by Station ID
         df_total = df_total.sort_values('Station_ID')
