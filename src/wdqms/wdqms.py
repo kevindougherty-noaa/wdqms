@@ -580,12 +580,6 @@ class WDQMS:
         variable = filename.split('_')[2]
         logging.debug(f'Variable: {variable}')
 
-        variable_ids = {
-            'SYNOP': {'ps': 110, 'q': 58, 't': 39, 'u': 41, 'v': 42 },
-            'TEMP': {'ps': 110, 'q': 29, 't': 2, 'u': 3, 'v': 4}
-            
-        }
-
         df_dict = {}
 
         column_list = ['Station_ID', 'Observation_Class', 'Observation_Type',
