@@ -443,9 +443,6 @@ class WDQMS:
         # Create two dataframes, one for q vales and one for t values
         q_df = df.loc[(df['var_id'] == q)]
         t_df = df.loc[(df['var_id'] == t)]
-        
-        logging.debug(f"q_df: {q_df}")
-        logging.debug(f"t_df: {t_df}")
 
         # Find where stations are the same
         stn_ids = np.intersect1d(t_df.Station_ID, q_df.Station_ID)
