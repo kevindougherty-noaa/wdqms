@@ -34,12 +34,12 @@ class WDQMS:
             },
             'TEMP': {
                 'df_type': self._create_sondes_df,
-                'obs_types': [180, 183],
+                'obs_types': [120, 220],
                 'variable_ids': {'ps': 110, 'q': 29, 't': 2, 'u': 3, 'v': 4}
             },
             'MARINE': {
                 'df_type': self._create_conv_df,
-                'obs_types': [120, 220],
+                'obs_types': [180, 183],
                 'variable_ids': {'ps': 110, 'q': 58, 't': 39, 'u': 41, 'v': 42}
             }
         }
@@ -71,6 +71,7 @@ class WDQMS:
         df_total['StatusFlag'] = df_total['StatusFlag'].astype(int)
 
         # Sort by Station ID
+        df_total['Station_ID'] = df_total['Station_ID'].astype(str)
         df_total = df_total.sort_values('Station_ID')
 
         logging.info(f'Creating dataframe for {self.wdqms_type} type ...')
