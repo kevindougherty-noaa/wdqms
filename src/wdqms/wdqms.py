@@ -301,13 +301,17 @@ class WDQMS:
                 logging.debug(f"Variable: {var}")
 
                 # Surface
-                if (110 in tmp['var_id'].unique() and
-                    var in tmp['var_id'].loc[tmp['Pressure'] == tmp['Pressure'].max()].unique()):
+                
+                # Find max pressure of the surface 110 value
+                surf_p_max = tmp['Pressure'].loc[tmp['var_id'] == 110].max()
 
-                    surf_tmp = tmp.loc[(tmp['Pressure'] == tmp['Pressure'].max()) &
+                if (110 in tmp['var_id'].unique() and
+                    var in tmp['var_id'].loc[tmp['Pressure'] == surf_p_max].unique()):
+
+                    surf_tmp = tmp.loc[(tmp['Pressure'] == surf_p_max) &
                                        (tmp['var_id'] == var)]
 
-                    surf_omf = surf_tmp['Obs_Minus_Forecast_adjusted'].values[0]
+                    surf_omf = surf_tmp['Obs_Minus_Forecast_adjusted'].values.mean()
                     surf_std = 0  # cannot compute std w/ one value so set to 0
                     level = 'Surf'
                     last_rep_lvl = -999.99
@@ -359,7 +363,7 @@ class WDQMS:
 
                 if len(stra_tmp) > 0:
                     stra_avg_omf = stra_tmp['Obs_Minus_Forecast_adjusted'].mean()
-                    stra_std_omf = stra_tmp['Obs_Minus_Forecast_adjusted'].std()
+                    stra_std_omf = 0 if len(stra_tmp == 1) else stra_tmp['Obs_Minus_Forecast_adjusted'].std()
                     level = 'Stra'
                     # Get lowest p for entire atmosphere
                     last_rep_lvl = tmp['Pressure'].min()
@@ -396,6 +400,7 @@ class WDQMS:
         df = pd.concat(df_list)
         df['Centre_id'] = 'NCEP'
         df['CodeType'] = 999
+        df = df.dropna()
 
         # Ordered columns
         cols = ['Station_id', 'yyyymmdd', 'HHMMSS', 'latitude', 'Longitude',
