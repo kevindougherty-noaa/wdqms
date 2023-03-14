@@ -39,7 +39,7 @@ class WDQMS:
             },
             'MARINE': {
                 'df_type': self._create_conv_df,
-                'obs_types': [180, 183],
+                'obs_types': [180, 183, 280, 282, 284],
                 'variable_ids': {'ps': 110, 'q': 58, 't': 39, 'u': 41, 'v': 42}
             }
         }
