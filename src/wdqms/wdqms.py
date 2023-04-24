@@ -105,15 +105,10 @@ class WDQMS:
         if self.wdqms_type in ['SYNOP', 'MARINE']:
             # Only include -3 > val >= 3 to avoid overlapping in cycles
             df = df.loc[df['Time'] != -3.]
-            
-            ##### Causing things to break so commenting out for now #####
-            # Remove bad background departures for each variable
-            #bad_ps = df[(df['var_id'] == 110) & (df['Obs_Minus_Forecast_adjusted'].abs() > 200)].index
-            #df.drop(bad_ps, inplace=True)
 
-            #bad_idx = df[(df['var_id'] != 110) & (df['Obs_Minus_Forecast_adjusted'].abs() > 500)].index
-            #df.drop(bad_idx, inplace=True)
-            #############################################################
+            # Remove bad background departures for each variable
+            df.loc[(df['var_id'] == 110) & (df['Obs_Minus_Forecast_adjusted'].abs() > 200), 'Obs_Minus_Forecast_adjusted'] = -999.9999
+            df.loc[(df['var_id'] != 110) & (df['Obs_Minus_Forecast_adjusted'].abs() > 500), 'Obs_Minus_Forecast_adjusted'] = -999.9999
 
         logging.debug(f"Total observations for {self.wdqms_type} after filter: {len(df)}")
         logging.info("Exiting wdqms_type_requirements()")
