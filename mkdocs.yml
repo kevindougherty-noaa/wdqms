@@ -1,0 +1,16 @@
+site_name: WDQMS
+site_description: WDQMS
+site_author: Kevin Dougherty - NOAA Affiliate
+repo_url: https://github.com/kevindougherty-noaa/wdqms
+edit_uri: tree/stable/doc/
+copyright: Copyright (c) 2022-2023
+docs_dir: doc
+site_dir: _site
+theme:
+    name: bootstrap
+
+nav:
+- Introduction: README.md
+- Background:
+  - FAQ: faq.md
+  
