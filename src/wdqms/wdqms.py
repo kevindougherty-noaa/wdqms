@@ -509,33 +509,33 @@ class WDQMS:
             logging.debug(f"New q background departure: {bg_dep}")
 
             try:
-            # This method works for nearly all cases.
-            # Find where the current station is in the input dataframe, then where
-            # the var_id == q value, replace the values with the background departure.
-            # Add tmp dataframe to a list to be concatenated into a final dataframe.
-            condition = (df['Station_ID'] == stn)
+                # This method works for nearly all cases.
+                # Find where the current station is in the input dataframe, then where
+                # the var_id == q value, replace the values with the background departure.
+                # Add tmp dataframe to a list to be concatenated into a final dataframe.
+                condition = (df['Station_ID'] == stn)
 
-            tmp = df.loc[condition]
-            tmp.loc[tmp['var_id'] == wdqms_type_dict['TEMP']['variable_ids']['q'], 'Obs_Minus_Forecast_adjusted'] = bg_dep
-            df_list.append(tmp)
+                tmp = df.loc[condition]
+                tmp.loc[tmp['var_id'] == self.wdqms_type_dict[self.wdqms_type]['variable_ids']['q'], 'Obs_Minus_Forecast_adjusted'] = bg_dep
+                df_list.append(tmp)
 
-        except ValueError:
-            # For the very rare cases where q has an additional value that t does not have, a ValueError occurs.
-            # To handle, we separate into into t and q dataframes. When looking for q, we also look where the pressure
-            # values in the dataframe == pressure values from merged dataframes above. We replace the background departure
-            # values there and then merge the two dataframes to a tmp dataframe to be added to a list to be concatenated 
-            # into a final dataframe.
+            except ValueError:
+                # For the very rare cases where q has an additional value that t does not have, a ValueError occurs.
+                # To handle, we separate into into t and q dataframes. When looking for q, we also look where the pressure
+                # values in the dataframe == pressure values from merged dataframes above. We replace the background departure
+                # values there and then merge the two dataframes to a tmp dataframe to be added to a list to be concatenated 
+                # into a final dataframe.
 
-            t_condition = (df['Station_ID'] == stn) & (df['var_id'] == wdqms_type_dict['TEMP']['variable_ids']['t'])
-            q_condition = (df['Station_ID'] == stn) & (df['var_id'] == wdqms_type_dict['TEMP']['variable_ids']['q']) & \
-                          (df['Pressure'].isin(pressure))
+                t_condition = (df['Station_ID'] == stn) & (df['var_id'] == self.wdqms_type_dict[self.wdqms_type]['variable_ids']['t'])
+                q_condition = (df['Station_ID'] == stn) & (df['var_id'] == self.wdqms_type_dict[self.wdqms_type]['variable_ids']['q']) & \
+                              (df['Pressure'].isin(pressure))
 
-            t_tmp = df.loc[t_condition]
-            df.loc[q_condition, 'Obs_Minus_Forecast_adjusted'] = bg_dep
-            q_tmp = df.loc[q_condition]
+                t_tmp = df.loc[t_condition]
+                df.loc[q_condition, 'Obs_Minus_Forecast_adjusted'] = bg_dep
+                q_tmp = df.loc[q_condition]
 
-            tmp = pd.concat([t_tmp, q_tmp])
-            df_list.append(tmp)
+                tmp = pd.concat([t_tmp, q_tmp])
+                df_list.append(tmp)
 
         # Concatenate all sub dataframes in list
         df = pd.concat(df_list)    
