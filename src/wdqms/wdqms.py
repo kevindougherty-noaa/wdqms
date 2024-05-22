@@ -66,8 +66,18 @@ class WDQMS:
         # Drop duplicates
         df_total = df_total.drop_duplicates()
 
+        # Create temporary dataframe of only temperature and q values
+        tq_condition = [self.wdqms_type_dict[self.wdqms_type]['variable_ids']['t'],
+                        self.wdqms_type_dict[self.wdqms_type]['variable_ids']['q']]
+
+        tq_df = df_total.loc[df_total['var_id'].isin(tq_condition)]
+        no_tq_df = df_total.loc[~df_total['var_id'].isin(tq_condition)]
+
         # Adjust relative humidity data
-        df_total = self._genqsat(df_total)
+        tq_df = self._genqsat(tq_df)
+        
+        # Merge the non t and q values back into returned t and q dataframe
+        df_total = pd.concat([new_tq_df, no_tq_df])
 
         # Add Status Flag column
         df_total = self._create_status_flag(df_total)
@@ -114,6 +124,10 @@ class WDQMS:
                    'Obs_Minus_Forecast_adjusted'] = -999.9999
             df.loc[(df['var_id'] != 110) & (df['Obs_Minus_Forecast_adjusted'].abs() > 500),
                    'Obs_Minus_Forecast_adjusted'] = -999.9999
+
+        if self.wdqms_type in ['TEMP']:
+            # Only include assimilated data as per WDQMS requirement document
+            df = df.loc[df['Analysis_Use_Flag'] == 1]
 
         logging.debug(f"Total observations for {self.wdqms_type} after filter: {len(df)}")
         logging.info("Exiting wdqms_type_requirements()")
@@ -452,6 +466,8 @@ class WDQMS:
 
         # Find where stations are the same
         stn_ids = np.intersect1d(t_df.Station_ID, q_df.Station_ID)
+        
+        df_list = []
 
         # loop through stations, calculate saturation specific humidity,
         # and replace background departure values from NetCDF file with
@@ -459,6 +475,7 @@ class WDQMS:
         for stn in stn_ids:
             logging.debug(f"Station ID: {stn}")
 
+            # Create temporary dataframes for t and q respectively
             t_tmp = t_df.loc[(t_df['Station_ID'] == stn)]
             q_tmp = q_df.loc[(q_df['Station_ID'] == stn)]
 
@@ -468,8 +485,12 @@ class WDQMS:
             t_tmp = t_tmp[columns_to_extract]
             q_tmp = q_tmp[columns_to_extract]
 
-            t_tmp = pd.merge(t_tmp, q_tmp, on=columns_to_compare, suffixes=('','_q'), how='inner')
-            t_tmp = t_tmp[columns_to_extract].drop_duplicates()
+            # Merge the dataframes and drop any duplicates
+            t_tmp_merge = pd.merge(t_tmp, q_tmp, on=columns_to_compare, suffixes=('','_q'), how='inner')
+            q_tmp_merge = pd.merge(q_tmp, t_tmp, on=columns_to_compare, suffixes=('','_t'), how='inner')
+
+            t_tmp = t_tmp_merge[columns_to_extract].drop_duplicates()
+            q_tmp = q_tmp_merge[columns_to_extract].drop_duplicates()
 
             q_obs = q_tmp['Observation'].to_numpy() * 1.0e6
             q_ges = (q_tmp['Observation'].to_numpy() -
@@ -487,10 +508,37 @@ class WDQMS:
             logging.debug(f"Original q background departure: {q_tmp['Obs_Minus_Forecast_adjusted'].values}")
             logging.debug(f"New q background departure: {bg_dep}")
 
-            # Replace the current background departure with the new calculated one
-            df.loc[(df['var_id'] == self.wdqms_type_dict[self.wdqms_type]['variable_ids']['q']) &
-                   (df['Station_ID'] == stn),
-                   'Obs_Minus_Forecast_adjusted'] = bg_dep
+            try:
+            # This method works for nearly all cases.
+            # Find where the current station is in the input dataframe, then where
+            # the var_id == q value, replace the values with the background departure.
+            # Add tmp dataframe to a list to be concatenated into a final dataframe.
+            condition = (df['Station_ID'] == stn)
+
+            tmp = df.loc[condition]
+            tmp.loc[tmp['var_id'] == wdqms_type_dict['TEMP']['variable_ids']['q'], 'Obs_Minus_Forecast_adjusted'] = bg_dep
+            df_list.append(tmp)
+
+        except ValueError:
+            # For the very rare cases where q has an additional value that t does not have, a ValueError occurs.
+            # To handle, we separate into into t and q dataframes. When looking for q, we also look where the pressure
+            # values in the dataframe == pressure values from merged dataframes above. We replace the background departure
+            # values there and then merge the two dataframes to a tmp dataframe to be added to a list to be concatenated 
+            # into a final dataframe.
+
+            t_condition = (df['Station_ID'] == stn) & (df['var_id'] == wdqms_type_dict['TEMP']['variable_ids']['t'])
+            q_condition = (df['Station_ID'] == stn) & (df['var_id'] == wdqms_type_dict['TEMP']['variable_ids']['q']) & \
+                          (df['Pressure'].isin(pressure))
+
+            t_tmp = df.loc[t_condition]
+            df.loc[q_condition, 'Obs_Minus_Forecast_adjusted'] = bg_dep
+            q_tmp = df.loc[q_condition]
+
+            tmp = pd.concat([t_tmp, q_tmp])
+            df_list.append(tmp)
+
+        # Concatenate all sub dataframes in list
+        df = pd.concat(df_list)    
 
         logging.info("Exiting genqstat()")
 
