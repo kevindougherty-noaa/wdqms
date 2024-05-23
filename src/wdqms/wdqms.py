@@ -456,8 +456,8 @@ class WDQMS:
         logging.info("Working in genqstat()")
 
         # Get variable type specific to WDQMS type
-        q_id = wdqms_type_dict[wdqms_type]['variable_ids']['q']
-        t_id = wdqms_type_dict[wdqms_type]['variable_ids']['t']
+        q_id = self.wdqms_type_dict[self.wdqms_type]['variable_ids']['q']
+        t_id = self.wdqms_type_dict[self.wdqms_type]['variable_ids']['t']
 
         # Filter the dataframes
         q_df = df[df['var_id'] == q_id]
