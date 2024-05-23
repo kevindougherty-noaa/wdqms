@@ -488,8 +488,8 @@ class WDQMS:
         station_ids = merged_df['Station_ID']
         pressure_vals = merged_df['Pressure']
         time_vals = merged_df['Time']
-        conditions = (q_df['Station_ID'].isin(station_ids)) &
-                     (q_df['Pressure'].isin(pressure_vals)) &
+        conditions = (q_df['Station_ID'].isin(station_ids)) & \
+                     (q_df['Pressure'].isin(pressure_vals)) & \
                      (q_df['Time'].isin(time_vals))
 
         # Update the background departure values for q_df
