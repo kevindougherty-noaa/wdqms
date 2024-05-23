@@ -447,9 +447,8 @@ class WDQMS:
                    temperature background error from GSI diagnostic file
 
         Args:
-            df : (df) pandas dataframe populated with data from GSI
+            df : (df) pandas dataframe populated with t and q data from GSI
                  diagnostic files
-            wdqms_type : (str) wdqms type file being created
         Returns:
             df: (df) the same dataframe read in with new background
                 departure values for humidity data
@@ -457,88 +456,48 @@ class WDQMS:
         logging.info("Working in genqstat()")
 
         # Get variable type specific to WDQMS type
-        q = self.wdqms_type_dict[self.wdqms_type]['variable_ids']['q']
-        t = self.wdqms_type_dict[self.wdqms_type]['variable_ids']['t']
+        q_id = wdqms_type_dict[wdqms_type]['variable_ids']['q']
+        t_id = wdqms_type_dict[wdqms_type]['variable_ids']['t']
 
-        # Create two dataframes, one for q vales and one for t values
-        q_df = df.loc[(df['var_id'] == q)]
-        t_df = df.loc[(df['var_id'] == t)]
+        # Filter the dataframes
+        q_df = df[df['var_id'] == q_id]
+        t_df = df[df['var_id'] == t_id]
 
-        # Find where stations are the same
-        stn_ids = np.intersect1d(t_df.Station_ID, q_df.Station_ID)
-        
-        df_list = []
+        columns_to_compare = ['Station_ID', 'Latitude', 'Longitude', 'Pressure', 'Time']
 
-        # loop through stations, calculate saturation specific humidity,
-        # and replace background departure values from NetCDF file with
-        # new ones calculated using the temperature obs and best temperature guess
-        for stn in stn_ids:
-            logging.debug(f"Station ID: {stn}")
+        # Merge dataframes on common keys using an inner join
+        merged_df = pd.merge(q_df, t_df, on=columns_to_compare,
+                             suffixes=('_q', '_t'), how='inner')
 
-            # Create temporary dataframes for t and q respectively
-            t_tmp = t_df.loc[(t_df['Station_ID'] == stn)]
-            q_tmp = q_df.loc[(q_df['Station_ID'] == stn)]
+        # Calculate needed values
+        q_obs = merged_df['Observation_q'].to_numpy() * 1.0e6
+        q_ges = (merged_df['Observation_q'].to_numpy() -
+                 merged_df['Obs_Minus_Forecast_adjusted_q'].to_numpy()) * 1.0e6
+        t_obs = merged_df['Observation_t'].to_numpy() - 273.16
+        t_ges = (merged_df['Observation_t'].to_numpy() -
+                 merged_df['Obs_Minus_Forecast_adjusted_t'].to_numpy()) - 273.16
+        pressure = merged_df['Pressure'].to_numpy()
 
-            columns_to_extract = ['Latitude', 'Longitude', 'Pressure', 'Time', 'Observation', 'Obs_Minus_Forecast_adjusted']
-            columns_to_compare = ['Latitude', 'Longitude', 'Pressure', 'Time']
+        qsat_obs = self._temp_2_saturation_specific_humidity(pressure, t_obs)
+        qsat_ges = self._temp_2_saturation_specific_humidity(pressure, t_ges)
 
-            t_tmp = t_tmp[columns_to_extract]
-            q_tmp = q_tmp[columns_to_extract]
+        # Calculate background departure
+        bg_dep = (q_obs / qsat_obs) - (q_ges / qsat_ges)
 
-            # Merge the dataframes and drop any duplicates
-            t_tmp_merge = pd.merge(t_tmp, q_tmp, on=columns_to_compare, suffixes=('','_q'), how='inner')
-            q_tmp_merge = pd.merge(q_tmp, t_tmp, on=columns_to_compare, suffixes=('','_t'), how='inner')
+        # Grab conditions from merged_df
+        station_ids = merged_df['Station_ID']
+        pressure_vals = merged_df['Pressure']
+        time_vals = merged_df['Time']
+        conditions = (q_df['Station_ID'].isin(station_ids)) &
+                     (q_df['Pressure'].isin(pressure_vals)) &
+                     (q_df['Time'].isin(time_vals))
 
-            t_tmp = t_tmp_merge[columns_to_extract].drop_duplicates()
-            q_tmp = q_tmp_merge[columns_to_extract].drop_duplicates()
+        # Update the background departure values for q_df
+        q_df = q_df.loc[conditions]
+        q_df['Obs_Minus_Forecast_adjusted'] = bg_dep
 
-            q_obs = q_tmp['Observation'].to_numpy() * 1.0e6
-            q_ges = (q_tmp['Observation'].to_numpy() -
-                     q_tmp['Obs_Minus_Forecast_adjusted'].to_numpy()) * 1.0e6
-            t_obs = t_tmp['Observation'].to_numpy() - 273.16
-            t_ges = (t_tmp['Observation'].to_numpy() -
-                     t_tmp['Obs_Minus_Forecast_adjusted'].to_numpy()) -273.16
-            pressure = q_tmp['Pressure'].to_numpy()
-
-            qsat_obs = self._temp_2_saturation_specific_humidity(pressure, t_obs)
-            qsat_ges = self._temp_2_saturation_specific_humidity(pressure, t_ges)
-
-            bg_dep = (q_obs/qsat_obs)-(q_ges/qsat_ges)
-
-            logging.debug(f"Original q background departure: {q_tmp['Obs_Minus_Forecast_adjusted'].values}")
-            logging.debug(f"New q background departure: {bg_dep}")
-
-            try:
-                # This method works for nearly all cases.
-                # Find where the current station is in the input dataframe, then where
-                # the var_id == q value, replace the values with the background departure.
-                # Add tmp dataframe to a list to be concatenated into a final dataframe.
-                condition = (df['Station_ID'] == stn)
-
-                tmp = df.loc[condition]
-                tmp.loc[tmp['var_id'] == self.wdqms_type_dict[self.wdqms_type]['variable_ids']['q'], 'Obs_Minus_Forecast_adjusted'] = bg_dep
-                df_list.append(tmp)
-
-            except ValueError:
-                # For the very rare cases where q has an additional value that t does not have, a ValueError occurs.
-                # To handle, we separate into into t and q dataframes. When looking for q, we also look where the pressure
-                # values in the dataframe == pressure values from merged dataframes above. We replace the background departure
-                # values there and then merge the two dataframes to a tmp dataframe to be added to a list to be concatenated 
-                # into a final dataframe.
-
-                t_condition = (df['Station_ID'] == stn) & (df['var_id'] == self.wdqms_type_dict[self.wdqms_type]['variable_ids']['t'])
-                q_condition = (df['Station_ID'] == stn) & (df['var_id'] == self.wdqms_type_dict[self.wdqms_type]['variable_ids']['q']) & \
-                              (df['Pressure'].isin(pressure))
-
-                t_tmp = df.loc[t_condition]
-                df.loc[q_condition, 'Obs_Minus_Forecast_adjusted'] = bg_dep
-                q_tmp = df.loc[q_condition]
-
-                tmp = pd.concat([t_tmp, q_tmp])
-                df_list.append(tmp)
-
-        # Concatenate all sub dataframes in list
-        df = pd.concat(df_list)    
+        # Rejoin t_df and q_df with updated values
+        df = pd.concat([t_df, q_df])
 
         logging.info("Exiting genqstat()")
 
