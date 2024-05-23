@@ -77,7 +77,7 @@ class WDQMS:
         tq_df = self._genqsat(tq_df)
         
         # Merge the non t and q values back into returned t and q dataframe
-        df_total = pd.concat([new_tq_df, no_tq_df])
+        df_total = pd.concat([tq_df, no_tq_df])
 
         # Add Status Flag column
         df_total = self._create_status_flag(df_total)
