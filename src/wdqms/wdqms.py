@@ -459,45 +459,50 @@ class WDQMS:
         q_id = self.wdqms_type_dict[self.wdqms_type]['variable_ids']['q']
         t_id = self.wdqms_type_dict[self.wdqms_type]['variable_ids']['t']
 
-        # Filter the dataframes
-        q_df = df[df['var_id'] == q_id]
-        t_df = df[df['var_id'] == t_id]
+        df_list = []
 
-        columns_to_compare = ['Station_ID', 'Latitude', 'Longitude', 'Pressure', 'Time']
+        # Groupby Station_ID
+        for stn, stn_df in df.groupby('Station_ID'):
 
-        # Merge dataframes on common keys using an inner join
-        merged_df = pd.merge(q_df, t_df, on=columns_to_compare,
-                             suffixes=('_q', '_t'), how='inner')
+            # Filter the dataframes
+            q_df = stn_df[stn_df['var_id'] == q_id]
+            t_df = stn_df[stn_df['var_id'] == t_id]
 
-        # Calculate needed values
-        q_obs = merged_df['Observation_q'].to_numpy() * 1.0e6
-        q_ges = (merged_df['Observation_q'].to_numpy() -
-                 merged_df['Obs_Minus_Forecast_adjusted_q'].to_numpy()) * 1.0e6
-        t_obs = merged_df['Observation_t'].to_numpy() - 273.16
-        t_ges = (merged_df['Observation_t'].to_numpy() -
-                 merged_df['Obs_Minus_Forecast_adjusted_t'].to_numpy()) - 273.16
-        pressure = merged_df['Pressure'].to_numpy()
+            # Merge dataframes on common keys using an inner join
+            merged_df = pd.merge(q_df, t_df, on=['Station_ID', 'Latitude', 'Longitude', 'Pressure', 'Time'], suffixes=('_q', '_t'), how='inner')
 
-        qsat_obs = self._temp_2_saturation_specific_humidity(pressure, t_obs)
-        qsat_ges = self._temp_2_saturation_specific_humidity(pressure, t_ges)
+            # Calculate needed values
+            q_obs = merged_df['Observation_q'].to_numpy() * 1.0e6
+            q_ges = (merged_df['Observation_q'].to_numpy() - merged_df['Obs_Minus_Forecast_adjusted_q'].to_numpy()) * 1.0e6
+            t_obs = merged_df['Observation_t'].to_numpy() - 273.16
+            t_ges = (merged_df['Observation_t'].to_numpy() - merged_df['Obs_Minus_Forecast_adjusted_t'].to_numpy()) - 273.16
+            pressure = merged_df['Pressure'].to_numpy()
 
-        # Calculate background departure
-        bg_dep = (q_obs / qsat_obs) - (q_ges / qsat_ges)
+            qsat_obs = self._temp_2_saturation_specific_humidity(pressure, t_obs)
+            qsat_ges = self._temp_2_saturation_specific_humidity(pressure, t_ges)
 
-        # Grab conditions from merged_df
-        station_ids = merged_df['Station_ID']
-        pressure_vals = merged_df['Pressure']
-        time_vals = merged_df['Time']
-        conditions = (q_df['Station_ID'].isin(station_ids)) & \
-                     (q_df['Pressure'].isin(pressure_vals)) & \
-                     (q_df['Time'].isin(time_vals))
+            # Calculate background departure
+            bg_dep = (q_obs / qsat_obs) - (q_ges / qsat_ges)
 
-        # Update the background departure values for q_df
-        q_df = q_df.loc[conditions]
-        q_df['Obs_Minus_Forecast_adjusted'] = bg_dep
+            # Grab conditions from merged_df
+            station_ids = merged_df['Station_ID']
+            pressure_vals = merged_df['Pressure']
+            time_vals = merged_df['Time']
+            latitude = merged_df['Latitude']
+            longitude = merged_df['Longitude']
+            conditions = (q_df['Station_ID'].isin(station_ids)) & \
+                         (q_df['Pressure'].isin(pressure_vals)) & \
+                         (q_df['Time'].isin(time_vals)) & \
+                         (q_df['Latitude'].isin(latitude)) & \
+                         (q_df['Longitude'].isin(longitude)) 
 
-        # Rejoin t_df and q_df with updated values
-        df = pd.concat([t_df, q_df])
+            # Update the background departure values for q_df
+            q_df = q_df.loc[conditions]
+            q_df['Obs_Minus_Forecast_adjusted'] = bg_dep
+
+            df_list.append(pd.concat([t_df, q_df]))
+
+        df = pd.concat(df_list)
 
         logging.info("Exiting genqstat()")
 
